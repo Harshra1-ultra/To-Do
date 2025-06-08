@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Work Organizer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font import */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+        }
+        /* Style for completed tasks */
+        .completed-task {
+            text-decoration: line-through;
+            color: #6b7280; /* Gray out completed tasks */
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center min-h-screen p-4 sm:p-6 lg:p-8">
+    <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl p-6 sm:p-8 space-y-6">
+        <h1 class="text-3xl sm:text-4xl font-bold text-gray-800 text-center mb-6">
+            ✨ Modern Work Organizer ✨
+        </h1>
+
+        <!-- Task Input Section -->
+        <div class="flex flex-col gap-4 p-4 bg-blue-50 rounded-lg shadow-inner">
+            <input
+                type="text"
+                id="taskInput"
+                placeholder="What's on your mind? (e.g., Finish project report)"
+                class="flex-grow p-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 shadow-sm text-gray-800"
+            />
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <select id="taskStatus" class="p-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 shadow-sm text-gray-700 bg-white">
+                    <option value="To Do">Status: To Do</option>
+                    <option value="In Progress">Status: In Progress</option>
+                    <option value="Done">Status: Done</option>
+                </select>
+                <input
+                    type="date"
+                    id="taskDueDate"
+                    class="p-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 shadow-sm text-gray-700 bg-white"
+                />
+                <select id="taskPriority" class="p-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 shadow-sm text-gray-700 bg-white">
+                    <option value="Low">Priority: Low</option>
+                    <option value="Medium">Priority: Medium</option>
+                    <option value="High">Priority: High</option>
+                </select>
+            </div>
+            <button
+                id="addTaskButton"
+                class="px-5 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 transform hover:scale-105"
+            >
+                Add Task
+            </button>
+        </div>
+
+        <!-- Task List Section -->
+        <div id="taskList" class="space-y-4">
+            <!-- Tasks will be added here dynamically -->
+        </div>
+
+        <!-- Custom Message Box -->
+        <div id="messageBox" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-lg shadow-xl text-center max-w-sm w-full space-y-4">
+                <p id="messageText" class="text-gray-800 text-lg"></p>
+                <button id="messageCloseButton" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition duration-200">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Re-added auth module for anonymous sign-in
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+
+        // Global variables for Firebase
+        let app;
+        let db;
+        let auth;
+        let isFirestoreReady = false;
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'default-work-organizer';
+        const TASKS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/tasks`;
+
+        // Get references to HTML elements
+        const taskInput = document.getElementById('taskInput');
+        const taskStatusInput = document.getElementById('taskStatus');
+        const taskDueDateInput = document.getElementById('taskDueDate');
+        const taskPriorityInput = document.getElementById('taskPriority');
+        const addTaskButton = document.getElementById('addTaskButton');
+        const taskList = document.getElementById('taskList');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const messageCloseButton = document.getElementById('messageCloseButton');
+
+        /**
+         * Displays a custom message box instead of alert.
+         * @param {string} message The message to display.
+         */
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+        }
+
+        // Close message box event listener
+        messageCloseButton.addEventListener('click', () => {
+            messageBox.classList.add('hidden');
+        });
+
+        // Initialize Firebase on window load
+        window.onload = async () => {
+            try {
+                // Mandatory global variables provided by the Canvas environment
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+                if (!firebaseConfig) {
+                    showMessageBox("Firebase configuration not found. Tasks will not be saved.");
+                    return;
+                }
+
+                // Initialize Firebase app and Firestore
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app); // Initialize auth
+
+                // Sign in anonymously to satisfy Firestore security rules
+                try {
+                    await signInAnonymously(auth);
+                    console.log("Signed in anonymously.");
+                    isFirestoreReady = true;
+                    console.log("Firestore initialized and authenticated.");
+
+                    // Check if tasks exist, if not, add dummy tasks
+                    const tasksSnapshot = await getDocs(collection(db, TASKS_COLLECTION_PATH));
+                    if (tasksSnapshot.empty) {
+                        await addDummyTasks();
+                        showMessageBox("Welcome! Some dummy tasks have been added for you.");
+                    }
+
+                    // Start listening for tasks once Firestore is ready
+                    listenForTasks();
+                } catch (authError) {
+                    console.error("Error signing in anonymously:", authError);
+                    showMessageBox(`Authentication error: ${authError.message}. Tasks may not be saved.`);
+                    // Even if anonymous sign-in fails, try to proceed, though persistence might be affected.
+                    isFirestoreReady = true;
+                    console.log("Firestore initialized (authentication failed).");
+                    listenForTasks(); // Attempt to listen even if auth failed, for better debugging
+                }
+
+
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                showMessageBox(`Failed to initialize application: ${error.message}`);
+            }
+        };
+
+        /**
+         * Adds some dummy tasks to Firestore if the collection is empty.
+         */
+        async function addDummyTasks() {
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+
+
+            const dummyTasks = [
+                {
+                    text: "Review Q2 Financial Report",
+                    completed: false,
+                    status: "In Progress",
+                    dueDate: today.toISOString().split('T')[0], // Today's date
+                    priority: "High",
+                    createdAt: Date.now() - 1000 * 60 * 60 * 24 // 1 day ago
+                },
+                {
+                    text: "Schedule team sync meeting",
+                    completed: false,
+                    status: "To Do",
+                    dueDate: tomorrow.toISOString().split('T')[0], // Tomorrow's date
+                    priority: "Medium",
+                    createdAt: Date.now() - 1000 * 60 * 30 // 30 minutes ago
+                },
+                {
+                    text: "Plan content for next blog post",
+                    completed: false,
+                    status: "To Do",
+                    dueDate: "", // No due date
+                    priority: "Low",
+                    createdAt: Date.now() - 1000 * 60 * 10 // 10 minutes ago
+                },
+                {
+                    text: "Follow up with client A for feedback",
+                    completed: true,
+                    status: "Done",
+                    dueDate: yesterday.toISOString().split('T')[0], // Yesterday's date
+                    priority: "High",
+                    createdAt: Date.now() - 1000 * 60 * 60 * 48 // 2 days ago
+                }
+            ];
+
+            try {
+                for (const task of dummyTasks) {
+                    await addDoc(collection(db, TASKS_COLLECTION_PATH), task);
+                }
+                console.log("Dummy tasks added.");
+            } catch (e) {
+                console.error("Error adding dummy tasks: ", e);
+                showMessageBox(`Error adding dummy tasks: ${e.message}`);
+            }
+        }
+
+
+        /**
+         * Renders all tasks from the provided tasks array into the DOM.
+         * @param {Array<Object>} tasks Array of task objects.
+         */
+        function renderTasks(tasks) {
+            taskList.innerHTML = ''; // Clear existing tasks
+
+            // Sort tasks: Incomplete tasks first, then by priority (High, Medium, Low), then by due date.
+            const sortedTasks = tasks.sort((a, b) => {
+                // 1. Incomplete tasks before completed tasks
+                if (a.completed && !b.completed) return 1;
+                if (!a.completed && b.completed) return -1;
+
+                // 2. Priority: High > Medium > Low
+                const priorityOrder = { 'High': 1, 'Medium': 2, 'Low': 3 };
+                if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+                    return priorityOrder[a.priority] - priorityOrder[b.priority];
+                }
+
+                // 3. Due Date: Earlier dates first (handle null/undefined)
+                if (a.dueDate && b.dueDate) {
+                    return new Date(a.dueDate) - new Date(b.dueDate);
+                }
+                if (a.dueDate && !b.dueDate) return -1; // Task with due date comes before no due date
+                if (!a.dueDate && b.dueDate) return 1; // No due date comes after task with due date
+
+                return 0; // Maintain original order if all other criteria are equal
+            });
+
+
+            sortedTasks.forEach(task => {
+                const taskItem = document.createElement('div');
+                taskItem.classList.add(
+                    'flex', 'flex-col', 'sm:flex-row', 'items-start', 'sm:items-center', 'justify-between',
+                    'p-4', 'bg-white', 'rounded-lg', 'shadow-md', 'border', 'border-gray-200', 'gap-3',
+                    'transform', 'hover:scale-[1.01]', 'transition', 'duration-150', 'ease-in-out'
+                );
+                if (task.completed) {
+                    taskItem.classList.add('completed-task', 'bg-gray-100', 'opacity-80');
+                }
+
+                // Task content (text and properties)
+                const taskContent = document.createElement('div');
+                taskContent.classList.add('flex-grow', 'space-y-1', 'sm:space-y-0', 'sm:mr-4', 'break-words');
+
+                const taskTextElement = document.createElement('span');
+                taskTextElement.textContent = task.text;
+                taskTextElement.classList.add('text-lg', 'font-medium', 'text-gray-800', 'block');
+
+                const propertiesContainer = document.createElement('div');
+                propertiesContainer.classList.add('flex', 'flex-wrap', 'gap-2', 'text-sm', 'text-gray-600');
+
+                // Status badge
+                const statusBadge = document.createElement('span');
+                let statusColor = '';
+                switch (task.status) {
+                    case 'To Do': statusColor = 'bg-gray-200 text-gray-700'; break;
+                    case 'In Progress': statusColor = 'bg-blue-100 text-blue-700'; break;
+                    case 'Done': statusColor = 'bg-green-100 text-green-700'; break;
+                }
+                // Fix for InvalidCharacterError: Split class string by space
+                statusBadge.classList.add(...statusColor.split(' '), 'px-2', 'py-1', 'rounded-full', 'font-semibold');
+                propertiesContainer.appendChild(statusBadge);
+
+                // Due Date badge
+                if (task.dueDate) {
+                    const dueDateBadge = document.createElement('span');
+                    const formattedDate = new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    dueDateBadge.textContent = `📅 ${formattedDate}`;
+                    let dueDateColor = 'bg-indigo-100 text-indigo-700';
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const taskDate = new Date(task.dueDate);
+                    taskDate.setHours(0, 0, 0, 0);
+
+                    if (taskDate < today && !task.completed) {
+                        dueDateColor = 'bg-red-100 text-red-700 animate-pulse'; // Past due and not completed
+                    } else if (taskDate.getTime() === today.getTime() && !task.completed) {
+                        dueDateColor = 'bg-yellow-100 text-yellow-700'; // Due today
+                    }
+                    // Fix for InvalidCharacterError: Split class string by space
+                    dueDateBadge.classList.add(...dueDateColor.split(' '), 'px-2', 'py-1', 'rounded-full', 'font-semibold');
+                    propertiesContainer.appendChild(dueDateBadge);
+                }
+
+                // Priority badge
+                const priorityBadge = document.createElement('span');
+                let priorityColor = '';
+                switch (task.priority) {
+                    case 'Low': priorityColor = 'bg-green-50 text-green-700'; break;
+                    case 'Medium': priorityColor = 'bg-yellow-50 text-yellow-700'; break;
+                    case 'High': priorityColor = 'bg-red-50 text-red-700'; break;
+                }
+                priorityBadge.textContent = `🔥 ${task.priority}`; // Added a 🔥 emoji for flair
+                // Fix for InvalidCharacterError: Split class string by space
+                priorityBadge.classList.add(...priorityColor.split(' '), 'px-2', 'py-1', 'rounded-full', 'font-semibold');
+                propertiesContainer.appendChild(priorityBadge);
+
+                taskContent.appendChild(taskTextElement);
+                taskContent.appendChild(propertiesContainer);
+
+                // Action buttons container
+                const actionButtons = document.createElement('div');
+                actionButtons.classList.add('flex', 'flex-shrink-0', 'gap-2');
+
+                // Complete/Uncomplete Button
+                const completeButton = document.createElement('button');
+                completeButton.textContent = task.completed ? 'Uncomplete' : 'Complete';
+                // Fix for InvalidCharacterError: Split class strings by space
+                const completeButtonClasses = [
+                    'px-3', 'py-2', 'rounded-md', 'font-medium', 'transition', 'duration-200',
+                    'text-white', 'focus:outline-none', 'focus:ring-2', 'focus:ring-offset-2'
+                ];
+                if (task.completed) {
+                    completeButtonClasses.push('bg-yellow-500', 'hover:bg-yellow-600', 'focus:ring-yellow-500');
+                } else {
+                    completeButtonClasses.push('bg-green-500', 'hover:bg-green-600', 'focus:ring-green-500');
+                }
+                completeButton.classList.add(...completeButtonClasses);
+
+                completeButton.addEventListener('click', () => toggleTaskCompleted(task.id, !task.completed));
+                actionButtons.appendChild(completeButton);
+
+                // Delete Button
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Delete';
+                deleteButton.classList.add(
+                    'px-3', 'py-2', 'bg-red-500', 'text-white', 'font-medium', 'rounded-md',
+                    'hover:bg-red-600', 'focus:outline-none', 'focus:ring-2', 'focus:ring-red-500',
+                    'focus:ring-offset-2', 'transition', 'duration-200'
+                );
+                deleteButton.addEventListener('click', () => deleteTask(task.id));
+                actionButtons.appendChild(deleteButton);
+
+                taskItem.appendChild(taskContent);
+                taskItem.appendChild(actionButtons);
+                taskList.appendChild(taskItem);
+            });
+        }
+
+        /**
+         * Adds a new task to Firestore.
+         */
+        async function addTask() {
+            if (!isFirestoreReady) {
+                showMessageBox("Application is still setting up. Please wait a moment.");
+                return;
+            }
+            if (!db) {
+                 showMessageBox("Firestore not initialized. Cannot add task.");
+                 console.error("Firestore (db) is null/undefined.");
+                 return;
+             }
+
+            const taskText = taskInput.value.trim();
+            const status = taskStatusInput.value;
+            const dueDate = taskDueDateInput.value; //YYYY-MM-DD format
+            const priority = taskPriorityInput.value;
+
+            if (taskText === '') {
+                showMessageBox("Task description cannot be empty!");
+                return;
+            }
+
+            const newTask = {
+                text: taskText,
+                completed: false,
+                status: status,
+                dueDate: dueDate,
+                priority: priority,
+                createdAt: Date.now() // Timestamp for sorting
+            };
+
+            try {
+                // Add a new document with a generated ID to the 'tasks' public collection for the app
+                // Path: /artifacts/{appId}/public/data/tasks/{documentId}
+                const docRef = await addDoc(collection(db, TASKS_COLLECTION_PATH), newTask);
+                console.log("Task added with ID: ", docRef.id);
+                // Clear input fields
+                taskInput.value = '';
+                taskStatusInput.value = 'To Do';
+                taskDueDateInput.value = '';
+                taskPriorityInput.value = 'Low';
+                taskInput.focus();
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                showMessageBox(`Error adding task: ${e.message}`);
+            }
+        }
+
+        /**
+         * Toggles the 'completed' status of a task in Firestore.
+         * @param {string} taskId The ID of the task to update.
+         * @param {boolean} newCompletedStatus The new completed status.
+         */
+        async function toggleTaskCompleted(taskId, newCompletedStatus) {
+            if (!isFirestoreReady || !db) {
+                showMessageBox("Application not ready.");
+                return;
+            }
+            try {
+                const taskRef = doc(db, TASKS_COLLECTION_PATH, taskId);
+                await updateDoc(taskRef, {
+                    completed: newCompletedStatus,
+                    status: newCompletedStatus ? 'Done' : 'To Do' // Auto-update status
+                });
+                console.log("Task status updated:", taskId);
+            } catch (e) {
+                console.error("Error updating task status: ", e);
+                showMessageBox(`Error updating task status: ${e.message}`);
+            }
+        }
+
+        /**
+         * Deletes a task from Firestore.
+         * @param {string} taskId The ID of the task to delete.
+         */
+        async function deleteTask(taskId) {
+            if (!isFirestoreReady || !db) {
+                showMessageBox("Application not ready.");
+                return;
+            }
+            try {
+                await deleteDoc(doc(db, TASKS_COLLECTION_PATH, taskId));
+                console.log("Task deleted:", taskId);
+            } catch (e) {
+                console.error("Error deleting task: ", e);
+                showMessageBox(`Error deleting task: ${e.message}`);
+            }
+        }
+
+        /**
+         * Sets up a real-time listener for tasks in Firestore.
+         */
+        function listenForTasks() {
+            if (!db) {
+                console.warn("Firestore not available for listening. Retrying...");
+                return;
+            }
+            const tasksColRef = collection(db, TASKS_COLLECTION_PATH);
+
+            onSnapshot(tasksColRef, (snapshot) => {
+                const tasks = [];
+                snapshot.forEach(doc => {
+                    tasks.push({ id: doc.id, ...doc.data() });
+                });
+                renderTasks(tasks);
+                console.log("Tasks updated from Firestore.");
+            }, (error) => {
+                console.error("Error listening to tasks:", error);
+                showMessageBox(`Failed to load tasks: ${error.message}`);
+            });
+        }
+
+        // Event listener for the "Add Task" button click
+        addTaskButton.addEventListener('click', addTask);
+
+        // Event listener for the "Enter" key press on the input field
+        taskInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                addTask();
+            }
+        });
+    </script>
+</body>
+</html>
