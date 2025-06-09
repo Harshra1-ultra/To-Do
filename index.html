@@ -26,6 +26,19 @@
             background: linear-gradient(135deg, #a8ff78 0%, #78ffd6 100%);
         }
 
+        /* Animated background theme */
+        body.theme-animated-gradient {
+            background: linear-gradient(270deg, #667eea, #764ba2, #4facfe, #00f2fe, #f7b733, #fc4a1a);
+            background-size: 600% 600%; /* Make the gradient larger than the viewport */
+            animation: gradient-animation 20s ease infinite; /* Slow animation for subtle effect */
+        }
+
+        @keyframes gradient-animation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
 
         .glass-morphism {
             background: rgba(255, 255, 255, 0.1);
@@ -189,6 +202,7 @@
                     <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" data-theme="ocean">Ocean Blue</button>
                     <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" data-theme="sunset">Sunset Orange</button>
                     <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" data-theme="forest">Forest Green</button>
+                    <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" data-theme="animated-gradient">Animated Gradient</button>
                 </div>
             </div>
         </div>
@@ -252,18 +266,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Quick Add Task -->
-    <div class="max-w-6xl mx-auto mb-6">
-        <div class="glass-morphism rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-center">
-            <input type="text" id="quickAddTaskInput" placeholder="➕ Add a new task quickly..."
-                   class="flex-1 w-full px-4 py-3 rounded-lg border-0 bg-white/90 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 placeholder-gray-500">
-            <button id="quickAddTaskBtn" class="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all">
-                Add Task
-            </button>
-        </div>
-    </div>
-
 
     <!-- Tasks Container -->
     <div class="max-w-6xl mx-auto">
@@ -450,14 +452,14 @@
                     if (e.target.id === 'taskModal') this.closeModal();
                 });
 
-                // Quick Add Task events
-                document.getElementById('quickAddTaskBtn').addEventListener('click', () => this.quickAddTask());
-                document.getElementById('quickAddTaskInput').addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault(); // Prevent form submission if input is inside a form
-                        this.quickAddTask();
-                    }
-                });
+                // The quick add task events are now removed.
+                // document.getElementById('quickAddTaskBtn').addEventListener('click', () => this.quickAddTask());
+                // document.getElementById('quickAddTaskInput').addEventListener('keydown', (e) => {
+                //     if (e.key === 'Enter') {
+                //         e.preventDefault();
+                //         this.quickAddTask();
+                //     }
+                // });
 
                 // Form events
                 document.getElementById('taskForm').addEventListener('submit', (e) => {
@@ -738,39 +740,40 @@
                 }
             }
 
-            quickAddTask() {
-                const quickInput = document.getElementById('quickAddTaskInput');
-                const title = quickInput.value.trim();
+            // Removed quickAddTask() method as per request
+            // quickAddTask() {
+            //     const quickInput = document.getElementById('quickAddTaskInput');
+            //     const title = quickInput.value.trim();
 
-                if (!title) {
-                    this.showNotification('Task title cannot be empty!', 'error');
-                    return;
-                }
+            //     if (!title) {
+            //         this.showNotification('Task title cannot be empty!', 'error');
+            //         return;
+            //     }
 
-                const task = {
-                    id: Date.now(),
-                    title,
-                    description: '', // Default empty description for quick add
-                    priority: 'medium', // Default medium priority for quick add
-                    status: 'todo',
-                    category: 'other', // Default 'other' category for quick add
-                    dueDate: '', // Default no due date for quick add
-                    createdAt: Date.now(),
-                    completed: false,
-                    subtasks: [],
-                    tags: [],
-                    timeTracking: { started: null, elapsed: 0 },
-                    reminders: []
-                };
+            //     const task = {
+            //         id: Date.now(),
+            //         title,
+            //         description: '',
+            //         priority: 'medium',
+            //         status: 'todo',
+            //         category: 'other',
+            //         dueDate: '',
+            //         createdAt: Date.now(),
+            //         completed: false,
+            //         subtasks: [],
+            //         tags: [],
+            //         timeTracking: { started: null, elapsed: 0 },
+            //         reminders: []
+            //     };
 
-                this.saveToHistory();
-                this.tasks.unshift(task);
-                this.saveTasks();
-                this.renderTasks();
-                this.updateStats();
-                quickInput.value = ''; // Clear the input field
-                this.showNotification('Task added quickly!', 'success');
-            }
+            //     this.saveToHistory();
+            //     this.tasks.unshift(task);
+            //     this.saveTasks();
+            //     this.renderTasks();
+            //     this.updateStats();
+            //     quickInput.value = '';
+            //     this.showNotification('Task added quickly!', 'success');
+            // }
 
             updateTask() {
                 const title = document.getElementById('taskTitle').value.trim();
@@ -830,7 +833,7 @@
                     task.status = task.completed ? 'completed' : 'todo';
                     // Pause timer if task is completed
                     if (task.completed && this.activeTimers[task.id]) {
-                        this.stopTimer(task.id);
+                        this.stopTimer(id); // Use `id` directly
                         task.timeTracking.started = null; // Ensure started is null when completed
                     }
                     this.saveTasks();
@@ -848,7 +851,7 @@
                     task.completed = status === 'completed';
                     // Pause timer if status changes to completed
                     if (task.completed && this.activeTimers[task.id]) {
-                        this.stopTimer(task.id);
+                        this.stopTimer(id); // Use `id` directly
                         task.timeTracking.started = null;
                     }
                     this.saveTasks();
@@ -1057,7 +1060,7 @@
             renderTask(task) {
                 const isOverdue = task.dueDate && new Date(task.dueDate) < new Date().setHours(0,0,0,0) && !task.completed;
                 const categoryIcons = {
-                    work: '💼',
+                    work: '�',
                     personal: '🏠',
                     shopping: '🛒',
                     health: '⚕️',
